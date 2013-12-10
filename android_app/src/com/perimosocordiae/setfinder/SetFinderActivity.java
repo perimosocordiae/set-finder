@@ -198,14 +198,30 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         return null;
     }
 
-    static enum SetColor { RED, PURPLE, GREEN }
-    static enum SetFilling { SOLID, OPEN, STRIPED }
-    static enum SetShape { OVAL, DIAMOND, SQUIGGLE }
     static class SetCard {
-        public SetColor color;
-        public SetFilling filling;
-        public SetShape shape;
-        public int number;
+        int[] attributes = new int[4];
+        private static final int NUMBER = 0, FILLING = 1, COLOR = 2, SHAPE = 3;
+        private static final int SOLID = 0, OPEN = 1, STRIPED = 2;
+        private static final int RED = 0, PURPLE = 1, GREEN = 2;
+        private static final int OVAL = 0, DIAMOND = 1, ESS = 2;
+        private static final String[][] attrNames = {
+            {"1","2","3"},
+            {"Solid","Open","Striped"},
+            {"Red","Purple","Green"},
+            {"Oval","Diamond","Ess"}
+        };
+
+        public void setNumber(List<MatOfPoint> contours) {
+            int number = contours.size();
+            if (number > 3) {
+                Log.w(TAG, "Got too many contours, setting number to 3.");
+                number = 3;
+            } else if (number == 0) {
+                Log.w(TAG, "Got no contours, setting number to 1.");
+                number = 1;
+            }
+            attributes[NUMBER] = number - 1;
+        }
 
         public void setColor(Mat hsv, int minSaturation, int minValue) {
             Mat hueThresh = new Mat();
@@ -221,9 +237,12 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             ub.val[1] = 200;
             Core.inRange(hsv, lb, ub, hueThresh);
             double red = Core.sumElems(hueThresh).val[0];
-            if (green > purple && green > red) color = SetColor.GREEN;
-            else if (purple > green && purple > red) color = SetColor.PURPLE;
-            else color = SetColor.RED;
+            if (green > purple && green > red)
+                attributes[COLOR] = GREEN;
+            else if (purple > green && purple > red)
+                attributes[COLOR] = PURPLE;
+            else
+                attributes[COLOR] = RED;
         }
 
         public void setFilling(Mat hsv, Mat thresh) {
@@ -231,13 +250,13 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             double meanSat = meanHSV.val[1];
             double meanVal = meanHSV.val[2];
             if (meanSat > meanVal) {
-                filling = SetFilling.SOLID;
+                attributes[FILLING] = SOLID;
                 return;
             }
             if (meanVal - meanSat < 60) {
-                filling = SetFilling.OPEN;
+                attributes[FILLING] = OPEN;
             } else {
-                filling = SetFilling.STRIPED;
+                attributes[FILLING] = STRIPED;
             }
         }
 
@@ -254,14 +273,14 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
                 Imgproc.approxPolyDP(approx, approx, sideErrorScale * arcLength, true);
                 long numEdges = approx.total();
                 if (4 <= numEdges && numEdges <= 8) {
-                    shape = SetShape.DIAMOND;  // a little wiggle room
+                    attributes[SHAPE] = DIAMOND;  // a little wiggle room
                     return;
                 }
                 approx.convertTo(contour, CvType.CV_32S);
                 if (Imgproc.isContourConvex(contour)) {
-                    shape = SetShape.OVAL;
+                    attributes[SHAPE] = OVAL;
                 } else {
-                    shape = SetShape.SQUIGGLE;
+                    attributes[SHAPE] = ESS;
                 }
                 return;
             }
@@ -280,28 +299,34 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
                 Imgproc.approxPolyDP(approx, approx, sideErrorScale * arcLength, true);
                 long numEdges = approx.total();
                 if (4 <= numEdges && numEdges <= 6) {
-                    shape = SetShape.DIAMOND;
+                    attributes[SHAPE] = DIAMOND;
                     return;
                 }
             }
             // no clue, just guess oval
-            shape = SetShape.OVAL;
+            attributes[SHAPE] = OVAL;
         }
 
         public String debugString() {
-            return number + " " + filling.name().substring(0,3) + " " +
-                   color.name().substring(0,3) + " " + shape.name().substring(0,3);
+            StringBuilder sb = new StringBuilder();
+            for (int i=0; i<4; i++) {
+                sb.append(attrNames[i][attributes[i]]).append(" ");
+            }
+            return sb.toString();
         }
 
-        public boolean setWith(SetCard a, SetCard b) {
-            return ((color==a.color && color==b.color) ||
-                    (color!=a.color && color!=b.color && a.color != b.color)) &&
-                   ((filling==a.filling && filling==b.filling) ||
-                    (filling!=a.filling && filling!=b.filling && a.filling != b.filling)) &&
-                   ((shape==a.shape && shape==b.shape) ||
-                    (shape!=a.shape && shape!=b.shape && a.shape != b.shape)) &&
-                   ((number==a.number && number==b.number) ||
-                    (number!=a.number && number!=b.number && a.number != b.number));
+        public boolean setWith(SetCard bCard, SetCard cCard) {
+            for (int i=0; i<4; i++) {
+                int a = attributes[i];
+                int b = bCard.attributes[i];
+                int c = cCard.attributes[i];
+                if (a==b) {
+                    if (b!=c) return false;
+                } else if (a==c || b==c) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
@@ -339,7 +364,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             }
             // Set the remaining attributes: shape and number.
             sc.setShape(contours, 0.01);
-            sc.number = contours.size();
+            sc.setNumber(contours);
             cards.add(sc);
         }
     }
