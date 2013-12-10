@@ -23,28 +23,27 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
 
     private MenuItem             mShowDebug;
     private CameraBridgeViewBase mOpenCvCameraView;
+    // Generic temporary matrices.
     private Mat fr_tmp1, fr_tmp2;
+    // Storage for card outlines.
     private List<MatOfPoint> rects;
+    // Storage for card information.
     private List<SetCard> cards;
+    // Cropping target, used for generative perspective transforms.
+    // Must be initialized after OpenCV loads.
+    private Mat cropTarget;
 
+    // Color constants.
     private static final Scalar cardOutlineColor = new Scalar(0, 255, 0);
     private static final Scalar noSetsColor = new Scalar(255, 0, 0);
     private static final Scalar blackColor = Scalar.all(0);
     private static final Scalar whiteColor = Scalar.all(255);
+    // Upper and lower bounds for card/shape thresholding.
     private static final Scalar cardHSVlb = new Scalar(0,0,150);
     private static final Scalar cardHSVub = new Scalar(255,50,255);
     private static final Scalar shapeHSVlb = new Scalar(0,50,0);
     // Size of cropped cards.
     private static final Size cardSize = new Size(450, 450);
-    // Cropping target, used for generative perspective transforms.
-    private static final Mat cropTarget = new Mat(4, 2, CvType.CV_32F);
-    static {
-        cropTarget.put(0, 0,
-                       0.0, 0.0,
-                       cardSize.width-1, 0.0,
-                       cardSize.width-1, cardSize.height-1,
-                       0.0, cardSize.height-1);
-    }
 
     public static boolean debugMode = false;
     // findCards params
@@ -125,6 +124,13 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         fr_tmp1 = new Mat();
         fr_tmp2 = new Mat();
         rects = new ArrayList<MatOfPoint>();
+        cards = new ArrayList<SetCard>();
+        cropTarget = new Mat(4, 2, CvType.CV_32F);
+        cropTarget.put(0, 0,
+           0.0, 0.0,
+           cardSize.width-1, 0.0,
+           cardSize.width-1, cardSize.height-1,
+           0.0, cardSize.height-1);
     }
 
     public void onCameraViewStopped() {
@@ -144,47 +150,59 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         findCards(rgba);
         Log.i(TAG, "found " + rects.size() + " cards.");
 
-        // Fill in the four attributes for each card.
+        // Fill in the four attributes for each card, and stores them in this.cards
         fillAttributes(rgba, 50, 90, 100);
 
         if (debugMode) {
-            Imgproc.drawContours(rgba, rects, -1, cardOutlineColor, 3);
-            for (int i = 0; i < cards.size(); i++) {
-                String label = cards.get(i).debugString();
-                MatOfPoint rect = rects.get(i);
-                Point pos = rect.toArray()[0];
-                Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5, blackColor);
-                pos.x--;
-                pos.y--;
-                Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5, whiteColor);
-            }
+            showDebugInfo(rgba);
         } else {
-            int[] foundSet = findSet(cards);
-            if (foundSet == null) {
-                Size sizeRgba = rgba.size();
-                int rows = (int) sizeRgba.height;
-                int cols = (int) sizeRgba.width;
-                Point pos = new Point(rows/2 - 2, cols/2 - 98);
-                Core.putText(rgba, "No sets found", pos,
-                             Core.FONT_HERSHEY_SIMPLEX, 1, blackColor, 2);
-                pos.x += 2;
-                pos.y += 2;
-                Core.putText(rgba, "No sets found", pos,
-                             Core.FONT_HERSHEY_SIMPLEX, 1, noSetsColor, 2);
-            } else {
-                List<MatOfPoint> setOutlines = Arrays.asList(
-                    rects.get(foundSet[0]),
-                    rects.get(foundSet[1]),
-		    rects.get(foundSet[2]));
-                Imgproc.drawContours(rgba, setOutlines, -1, cardOutlineColor, 3);
-            }
+            showSet(rgba);
         }
         // scale it back up
         Imgproc.resize(rgba, rgba, origSize, 0, 0, Imgproc.INTER_LINEAR);
         return rgba;
     }
 
-    static int[] findSet(List<SetCard> cards) {
+    private void showSet(Mat rgba) {
+        int n = cards.size();
+        for (int i = 0; i < n-2; i++) {
+            for (int j = i+1; j < n-1; j++) {
+                for (int k = j+1; k < n; k++) {
+                    if (cards.get(i).setWith(cards.get(j), cards.get(k))) {
+                        List<MatOfPoint> setOutlines = Arrays.asList(
+                            rects.get(i), rects.get(j), rects.get(k));
+                        Imgproc.drawContours(rgba, setOutlines, -1, cardOutlineColor, 3);
+                        return;
+                    }
+                }
+            }
+        }
+        // no sets found
+        Size sizeRgba = rgba.size();
+        int rows = (int) sizeRgba.height;
+        int cols = (int) sizeRgba.width;
+        Point pos = new Point(rows/2 - 2, cols/2 - 98);
+        String text = getString(R.string.no_sets);
+        Core.putText(rgba, text, pos, Core.FONT_HERSHEY_SIMPLEX, 1, blackColor, 2);
+        pos.x += 2;
+        pos.y += 2;
+        Core.putText(rgba, text, pos, Core.FONT_HERSHEY_SIMPLEX, 1, noSetsColor, 2);
+    }
+
+    private void showDebugInfo(Mat rgba) {
+        Imgproc.drawContours(rgba, rects, -1, cardOutlineColor, 3);
+        for (int i = 0; i < cards.size(); i++) {
+            String label = cards.get(i).debugString();
+            MatOfPoint rect = rects.get(i);
+            Point pos = rect.toArray()[0];
+            Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5, blackColor);
+            pos.x--;
+            pos.y--;
+            Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5, whiteColor);
+        }
+    }
+
+    private int[] findSet() {
         int n = cards.size();
         for (int i = 0; i < n-2; i++) {
             for (int j = i+1; j < n-1; j++) {
