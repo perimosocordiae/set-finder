@@ -25,6 +25,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
     private CameraBridgeViewBase mOpenCvCameraView;
     private Mat fr_tmp1, fr_tmp2;
     private List<MatOfPoint> rects;
+    private List<SetCard> cards;
 
     private static final Scalar cardOutlineColor = new Scalar(0, 255, 0);
     private static final Scalar noSetsColor = new Scalar(255, 0, 0);
@@ -33,13 +34,24 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
     private static final Scalar cardHSVlb = new Scalar(0,0,150);
     private static final Scalar cardHSVub = new Scalar(255,50,255);
     private static final Scalar shapeHSVlb = new Scalar(0,50,0);
+    // Size of cropped cards.
+    private static final Size cardSize = new Size(450, 450);
+    // Cropping target, used for generative perspective transforms.
+    private static final Mat cropTarget = new Mat(4, 2, CvType.CV_32F);
+    static {
+        cropTarget.put(0, 0,
+                       0.0, 0.0,
+                       cardSize.width-1, 0.0,
+                       cardSize.width-1, cardSize.height-1,
+                       0.0, cardSize.height-1);
+    }
 
     public static boolean debugMode = false;
-    // findRects params
+    // findCards params
     public double sideErrorScale = 0.02;
+    public double maxCornerAngleCos = 0.3;
     public int minRectArea = 1000;
     public int maxRectArea = 100000;
-    public double maxCornerAngleCos = 0.3;
 
     private BaseLoaderCallback  mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -70,7 +82,8 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
 
         setContentView(R.layout.set_finder_surface_view);
 
-        mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.set_finder_activity_surface_view);
+        mOpenCvCameraView = (CameraBridgeViewBase)
+            findViewById(R.id.set_finder_activity_surface_view);
         mOpenCvCameraView.setCvCameraViewListener(this);
     }
 
@@ -122,31 +135,35 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
 
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
         Mat rgba = inputFrame.rgba();
-        Size origSize = rgba.size();
         // scale down a bit
+        //TODO: choose an absolute size and scale to that.
+        Size origSize = rgba.size();
         Imgproc.resize(rgba, rgba, new Size(), 0.5, 0.5, Imgproc.INTER_AREA);
-        Size sizeRgba = rgba.size();
-        int rows = (int) sizeRgba.height;
-        int cols = (int) sizeRgba.width;
-        findCards(rgba);
 
-        List<SetCard> cards = attributes(rgba, rects, 50, 90, 100, 450);
-        Log.i(TAG, "found " + cards.size() + " cards.");
+        // Find any cards in the image, and store them in this.rects
+        findCards(rgba);
+        Log.i(TAG, "found " + rects.size() + " cards.");
+
+        // Fill in the four attributes for each card.
+        fillAttributes(rgba, 50, 90, 100);
+
         if (debugMode) {
             Imgproc.drawContours(rgba, rects, -1, cardOutlineColor, 3);
             for (int i = 0; i < cards.size(); i++) {
                 String label = cards.get(i).debugString();
                 MatOfPoint rect = rects.get(i);
                 Point pos = rect.toArray()[0];
-                Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5,                               blackColor);
+                Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5, blackColor);
                 pos.x--;
                 pos.y--;
-                Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5,
-                             whiteColor);
+                Core.putText(rgba, label, pos, Core.FONT_HERSHEY_SIMPLEX, 0.5, whiteColor);
             }
         } else {
             int[] foundSet = findSet(cards);
             if (foundSet == null) {
+                Size sizeRgba = rgba.size();
+                int rows = (int) sizeRgba.height;
+                int cols = (int) sizeRgba.width;
                 Point pos = new Point(rows/2 - 2, cols/2 - 98);
                 Core.putText(rgba, "No sets found", pos,
                              Core.FONT_HERSHEY_SIMPLEX, 1, blackColor, 2);
@@ -277,39 +294,42 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         }
 
         public boolean setWith(SetCard a, SetCard b) {
-            return ((color==a.color && color==b.color) || (color!=a.color && color!=b.color && a.color != b.color)) &&
-                   ((filling==a.filling && filling==b.filling) || (filling!=a.filling && filling!=b.filling && a.filling != b.filling)) &&
-                   ((shape==a.shape && shape==b.shape) || (shape!=a.shape && shape!=b.shape && a.shape != b.shape)) &&
-                   ((number==a.number && number==b.number) || (number!=a.number && number!=b.number && a.number != b.number));
+            return ((color==a.color && color==b.color) ||
+                    (color!=a.color && color!=b.color && a.color != b.color)) &&
+                   ((filling==a.filling && filling==b.filling) ||
+                    (filling!=a.filling && filling!=b.filling && a.filling != b.filling)) &&
+                   ((shape==a.shape && shape==b.shape) ||
+                    (shape!=a.shape && shape!=b.shape && a.shape != b.shape)) &&
+                   ((number==a.number && number==b.number) ||
+                    (number!=a.number && number!=b.number && a.number != b.number));
         }
     }
 
-    static List<SetCard> attributes(Mat img, List<MatOfPoint> rects,
-                                    int minSaturation, int minValue, int minArea, int cardSize) {
-        List<SetCard> attrs = new ArrayList<SetCard>();
-        Mat cropped = new Mat();
-        Mat thresh = new Mat();
-        Mat target = new Mat(4, 2, CvType.CV_32F);
-        target.put(0, 0, 0.0,0.0,cardSize-1,0,cardSize-1,cardSize-1,0,cardSize-1);
+    private void fillAttributes(Mat rgba, int minSaturation, int minValue, int minArea) {
+        cards.clear();  // TODO: use prior information about these cards?
         Mat bbox = new Mat(4, 2, CvType.CV_32F);
-        Size size = new Size(cardSize, cardSize);
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
         Mat hierarchy = new Mat();
         int[] hierData = new int[4];
         for (MatOfPoint rect : rects) {
-            rect.convertTo(bbox, CvType.CV_32FC2);
-            Mat transform = Imgproc.getPerspectiveTransform(bbox, target);
-            Imgproc.warpPerspective(img, cropped, transform, size);
-            Imgproc.cvtColor(cropped, cropped, Imgproc.COLOR_BGR2HSV);
-
+            // TODO: avoid allocating a new SetCard every time.
             SetCard sc = new SetCard();
-            sc.setColor(cropped, minSaturation, minValue);
-
-            Core.inRange(cropped, shapeHSVlb, whiteColor, thresh);
-            sc.setFilling(cropped, thresh);
-
-            Imgproc.findContours(thresh, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_SIMPLE);
-            // Filter out inner contours.
+            // Crop out the card from the full image.
+            rect.convertTo(bbox, CvType.CV_32FC2);
+            Mat transform = Imgproc.getPerspectiveTransform(bbox, cropTarget);
+            Imgproc.warpPerspective(rgba, fr_tmp1, transform, cardSize);
+            // Convert the cropped card to HSV.
+            Imgproc.cvtColor(fr_tmp1, fr_tmp1, Imgproc.COLOR_BGR2HSV);
+            // Set the color attribute.
+            sc.setColor(fr_tmp1, minSaturation, minValue);
+            // Threshold out the card shapes.
+            Core.inRange(fr_tmp1, shapeHSVlb, whiteColor, fr_tmp2);
+            // Set the filling attribute
+            sc.setFilling(fr_tmp1, fr_tmp2);
+            // Find contours in the thresholded card image.
+            Imgproc.findContours(fr_tmp2, contours, hierarchy, Imgproc.RETR_TREE,
+                                 Imgproc.CHAIN_APPROX_SIMPLE);
+            // Filter out any interior contours.
             int i = 0;
             for (Iterator<MatOfPoint> it = contours.iterator(); it.hasNext(); i++) {
                 hierarchy.get(i, 0, hierData);
@@ -317,21 +337,47 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
                     it.remove();
                 }
             }
+            // Set the remaining attributes: shape and number.
             sc.setShape(contours, 0.01);
             sc.number = contours.size();
-            attrs.add(sc);
+            cards.add(sc);
         }
-        return attrs;
     }
 
-    static double angle(Point pt1, Point pt2, Point pt0) {
-        double dx1 = pt1.x - pt0.x;
-        double dy1 = pt1.y - pt0.y;
-        double dx2 = pt2.x - pt0.x;
-        double dy2 = pt2.y - pt0.y;
-        return (dx1*dx2 + dy1*dy2)/Math.sqrt((dx1 * dx1 + dy1 * dy1) * (dx2 * dx2 + dy2 * dy2) + 1e-10);
+    private void findCards(Mat rgba) {
+        rects.clear();  // store found cards here. TODO: use old positions as priors?
+        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+        MatOfPoint2f approx = new MatOfPoint2f();
+
+        // convert to HSV space, threshold, and find contours
+        Imgproc.cvtColor(rgba, fr_tmp1, Imgproc.COLOR_BGR2HSV);
+        Core.inRange(fr_tmp1, cardHSVlb, cardHSVub, fr_tmp1);
+        Imgproc.findContours(fr_tmp1, contours, new Mat(), Imgproc.RETR_LIST,
+                             Imgproc.CHAIN_APPROX_SIMPLE);
+
+        for (MatOfPoint cnt : contours) {
+            // approximate contours to get more regular shapes
+            cnt.convertTo(approx, CvType.CV_32FC2);
+            double sideErrorThresh = sideErrorScale * Imgproc.arcLength(approx, true);
+            Imgproc.approxPolyDP(approx, approx, sideErrorThresh, true);
+            // only take contours with 4 sides
+            if (approx.total() != 4) continue;
+            approx.convertTo(cnt, CvType.CV_32S);
+            // apply area, convexity, and right-angle filters
+            double cArea = Imgproc.contourArea(approx);
+            if (
+                    cArea > minRectArea && cArea < maxRectArea &&
+                    Imgproc.isContourConvex(cnt) &&
+                    maxAngleCos(approx.toArray()) < maxCornerAngleCos
+               ) {
+                rects.add(cnt);
+            }
+        }
     }
 
+    /*
+        Helpers for findCards
+    */
     static double maxAngleCos(Point[] cnt) {
         double maxCos = 0.0;
         for (int i = 2; i < 5; i++) {
@@ -342,29 +388,11 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         }
         return maxCos;
     }
-
-    private void findCards(Mat rgba) {
-        rects.clear();
-        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
-        MatOfPoint2f approx = new MatOfPoint2f();
-        Imgproc.cvtColor(rgba, fr_tmp1, Imgproc.COLOR_BGR2HSV);
-
-        Core.inRange(fr_tmp1, cardHSVlb, cardHSVub, fr_tmp1);
-        Imgproc.findContours(fr_tmp1, contours, new Mat(), Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
-        for (MatOfPoint cnt : contours) {
-            cnt.convertTo(approx, CvType.CV_32FC2);
-            double sideErrorThresh = sideErrorScale * Imgproc.arcLength(approx, true);
-            Imgproc.approxPolyDP(approx, approx, sideErrorThresh, true);
-            if (approx.total() != 4) continue;
-            approx.convertTo(cnt, CvType.CV_32S);
-            double cArea = Imgproc.contourArea(approx);
-            if (
-                    cArea > minRectArea && cArea < maxRectArea &&
-                    Imgproc.isContourConvex(cnt) &&
-                    maxAngleCos(approx.toArray()) < maxCornerAngleCos
-               ) {
-                rects.add(cnt);
-            }
-        }
+    static double angle(Point pt1, Point pt2, Point pt0) {
+        double dx1 = pt1.x - pt0.x;
+        double dy1 = pt1.y - pt0.y;
+        double dx2 = pt2.x - pt0.x;
+        double dy2 = pt2.y - pt0.y;
+        return (dx1*dx2 + dy1*dy2) / Math.sqrt((dx1*dx1 + dy1*dy1) * (dx2*dx2 + dy2*dy2) + 1e-10);
     }
 }
