@@ -56,7 +56,7 @@ def find_sets(attributes):
       yield i,j,k
 
 
-def attributes(card, min_saturation=50, min_value=90, min_area=100, use_kmeans=False):
+def attributes(card, min_saturation=50, min_value=90, use_kmeans=False):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
   color = card_color(hsv, min_saturation, min_value)
 
@@ -70,21 +70,22 @@ def attributes(card, min_saturation=50, min_value=90, min_area=100, use_kmeans=F
   else:
     thresh = cv2.inRange(hsv, (0,50,0), (255,255,255))
 
-  filling = card_filling(hsv, thresh)
   contours, hier = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-  mask = hier[0,:,-1] < 0
-  contours = [c for i,c in enumerate(contours) if mask[i] and cv2.contourArea(c) > min_area]
+  outer_mask = hier[0,:,-1] < 0
+  filling = card_filling(outer_mask)
+  contours = [c for i,c in enumerate(contours) if outer_mask[i]]
   shape = card_shape(contours)
   return len(contours), filling, color, shape
 
 
-def card_filling(hsv, thresh):
-  _,saturation,value = hsv[thresh.astype(bool)].T
-  ms = np.median(saturation)
-  mv = np.median(value)
-  if ms > mv:
+def card_filling(outer_mask):
+  num_contours = len(outer_mask)
+  num_outers = outer_mask.sum()
+  if num_contours == num_outers:
+    # all contours are outers
     return 'solid'
-  if mv - ms < 60:
+  if num_contours//2 == num_outers:
+    # there's one inner for every outer
     return 'open'
   return 'striped'
 
