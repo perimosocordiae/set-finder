@@ -129,9 +129,9 @@ def angle_cos(contour):
   return np.abs((d1*d2).sum(axis=1) / np.sqrt((d1*d1).sum(axis=1)*(d2*d2).sum(axis=1)))
 
 
-def find_rects(img, side_err_scale=0.02, min_area=1000,  max_corner_angle_cos=0.3):
+def find_rects(img, min_val=220, max_sat=70, side_err_scale=0.02, min_area=1000,  max_corner_angle_cos=0.3):
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-  thresh = cv2.inRange(hsv, (0,0,150),(255,50,255))
+  thresh = cv2.inRange(hsv, (0,0,min_val),(255,max_sat,255))
   contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
   rects = []
   for cnt in contours:
