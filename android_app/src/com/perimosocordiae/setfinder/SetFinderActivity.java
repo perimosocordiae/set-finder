@@ -39,9 +39,8 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
     private static final Scalar blackColor = Scalar.all(0);
     private static final Scalar whiteColor = Scalar.all(255);
     // Upper and lower bounds for card/shape thresholding.
-    private static final Scalar cardHSVlb = new Scalar(0,0,150);
-    private static final Scalar cardHSVub = new Scalar(255,50,255);
-    private static final Scalar shapeHSVlb = new Scalar(0,50,0);
+    private static final Scalar cardHSVlb = new Scalar(0,0,220);
+    private static final Scalar cardHSVub = new Scalar(255,70,255);
     // Size of cropped cards.
     private static final Size cardSize = new Size(450, 450);
 
@@ -51,6 +50,8 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
     public double maxCornerAngleCos = 0.3;
     public int minRectArea = 1000;
     public int maxRectArea = 100000;
+    // fillAttributes params
+    public int minShapeArea = 100;
 
     private BaseLoaderCallback  mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -151,7 +152,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         Log.i(TAG, "found " + rects.size() + " cards.");
 
         // Fill in the four attributes for each card, and stores them in this.cards
-        fillAttributes(rgba, 50, 90, 100);
+        fillAttributes(rgba);
 
         if (debugMode) {
             showDebugInfo(rgba);
@@ -228,6 +229,8 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             {"Red","Purple","Green"},
             {"Oval","Diamond","Ess"}
         };
+        // Depends on the color we choose.
+        Scalar shapeHSVlb, shapeHSVub;
 
         public void setNumber(List<MatOfPoint> contours) {
             int number = contours.size();
@@ -241,26 +244,38 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             attributes[NUMBER] = number - 1;
         }
 
-        public void setColor(Mat hsv, int minSaturation, int minValue) {
+        public void setColor(Mat hsv) {
             Mat hueThresh = new Mat();
-            Scalar lb = new Scalar(60, minSaturation, minValue);
+            // green
+            Scalar lb = new Scalar(36, 0, 0);
             Scalar ub = new Scalar(110, 255, 255);
             Core.inRange(hsv, lb, ub, hueThresh);
             double green = Core.sumElems(hueThresh).val[0];
-            lb.val[0] = 120;
-            ub.val[1] = 140;
+            // purple
+            lb.val[0] = 120;  // min_hue
+            ub.val[0] = 255;  // max_hue
             Core.inRange(hsv, lb, ub, hueThresh);
             double purple = Core.sumElems(hueThresh).val[0];
-            lb.val[0] = 160;
-            ub.val[1] = 200;
+            // red
+            lb.val[0] = 0;  // min_hue
+            ub.val[0] = 10;  // max_hue
+            lb.val[1] = 60;  // min_sat
             Core.inRange(hsv, lb, ub, hueThresh);
             double red = Core.sumElems(hueThresh).val[0];
-            if (green > purple && green > red)
+
+            if (green > purple && green > red) {
                 attributes[COLOR] = GREEN;
-            else if (purple > green && purple > red)
+                shapeHSVlb = new Scalar(36, 0, 0);
+                shapeHSVub = new Scalar(110, 255, 255);
+            } else if (purple > green && purple > red) {
                 attributes[COLOR] = PURPLE;
-            else
+                shapeHSVlb = new Scalar(120, 0, 0);
+                shapeHSVub = new Scalar(255, 255, 255);
+            } else {
                 attributes[COLOR] = RED;
+                shapeHSVlb = new Scalar(0, 60, 0);
+                shapeHSVub = new Scalar(10, 255, 255);
+            }
         }
 
         public void setFilling(Mat hsv, Mat thresh) {
@@ -348,7 +363,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         }
     }
 
-    private void fillAttributes(Mat rgba, int minSaturation, int minValue, int minArea) {
+    private void fillAttributes(Mat rgba) {
         cards.clear();  // TODO: use prior information about these cards?
         Mat bbox = new Mat(4, 2, CvType.CV_32F);
         List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
@@ -364,9 +379,9 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             // Convert the cropped card to HSV.
             Imgproc.cvtColor(fr_tmp1, fr_tmp1, Imgproc.COLOR_RGB2HSV);
             // Set the color attribute.
-            sc.setColor(fr_tmp1, minSaturation, minValue);
+            sc.setColor(fr_tmp1);
             // Threshold out the card shapes.
-            Core.inRange(fr_tmp1, shapeHSVlb, whiteColor, fr_tmp2);
+            Core.inRange(fr_tmp1, sc.shapeHSVlb, sc.shapeHSVub, fr_tmp2);
             // Set the filling attribute
             sc.setFilling(fr_tmp1, fr_tmp2);
             // Find contours in the thresholded card image.
@@ -376,7 +391,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             int i = 0;
             for (Iterator<MatOfPoint> it = contours.iterator(); it.hasNext(); i++) {
                 hierarchy.get(i, 0, hierData);
-                if (hierData[3] >= 0 || Imgproc.contourArea(it.next()) < minArea) {
+                if (hierData[3] >= 0 || Imgproc.contourArea(it.next()) < minShapeArea) {
                     it.remove();
                 }
             }
