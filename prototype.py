@@ -5,7 +5,7 @@ from itertools import combinations
 
 
 def main(debug=True):
-  imgfile = 'test_images/set02.jpg'
+  imgfile = 'test_images/set02.png'
   img = cv2.imread(imgfile)
   if img is None:
     print 'Error: could not read %s' % imgfile
