@@ -56,9 +56,9 @@ def find_sets(attributes):
       yield i,j,k
 
 
-def attributes(card, min_saturation=50, min_value=90, use_kmeans=False):
+def attributes(card, use_kmeans=False):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
-  color = card_color(hsv, min_saturation, min_value)
+  color, (min_hue, max_hue, min_sat) = card_color(hsv)
 
   # threshold out the shapes
   if use_kmeans:
@@ -68,7 +68,7 @@ def attributes(card, min_saturation=50, min_value=90, use_kmeans=False):
     _,labels,centers = cv2.kmeans(sat, 2, criteria, 10, cv2.KMEANS_PP_CENTERS)
     thresh = (labels == np.argmax(centers)).reshape((hsv.shape[0], hsv.shape[1])).astype(np.uint8) * 255
   else:
-    thresh = cv2.inRange(hsv, (0,50,0), (255,255,255))
+    thresh = cv2.inRange(hsv, (min_hue,min_sat,0),(max_hue,255,255))
 
   contours, hier = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
   outer_mask = hier[0,:,-1] < 0
@@ -112,14 +112,16 @@ def card_shape(contours, side_err_scale=0.01):
   return 'oval'  # or ess, not really sure here
 
 
-def card_color(hsv, min_saturation, min_value):
-  hue_ranges = [(60,110),(120, 140),(160, 200)]
+def card_color(hsv):
+  # (min_hue, max_hue, min_sat)
+  hue_ranges = [(36,110,0),(120, 255, 0),(0, 10, 60)]
   hue_names = ['green', 'purple', 'red']
   hue_matches = np.zeros(3)
   for i, hr in enumerate(hue_ranges):
-    lb = (hr[0],min_saturation,min_value)
+    lb = (hr[0],hr[2],0)
     hue_matches[i] = cv2.inRange(hsv, lb, (hr[1],255,255)).sum()
-  return hue_names[np.argmax(hue_matches)]
+  ci = np.argmax(hue_matches)
+  return hue_names[ci], hue_ranges[ci]
 
 
 def angle_cos(contour):
