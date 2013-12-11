@@ -362,7 +362,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
             Mat transform = Imgproc.getPerspectiveTransform(bbox, cropTarget);
             Imgproc.warpPerspective(rgba, fr_tmp1, transform, cardSize);
             // Convert the cropped card to HSV.
-            Imgproc.cvtColor(fr_tmp1, fr_tmp1, Imgproc.COLOR_BGR2HSV);
+            Imgproc.cvtColor(fr_tmp1, fr_tmp1, Imgproc.COLOR_RGB2HSV);
             // Set the color attribute.
             sc.setColor(fr_tmp1, minSaturation, minValue);
             // Threshold out the card shapes.
@@ -393,7 +393,7 @@ public class SetFinderActivity extends Activity implements CvCameraViewListener2
         MatOfPoint2f approx = new MatOfPoint2f();
 
         // convert to HSV space, threshold, and find contours
-        Imgproc.cvtColor(rgba, fr_tmp1, Imgproc.COLOR_BGR2HSV);
+        Imgproc.cvtColor(rgba, fr_tmp1, Imgproc.COLOR_RGB2HSV);
         Core.inRange(fr_tmp1, cardHSVlb, cardHSVub, fr_tmp1);
         Imgproc.findContours(fr_tmp1, contours, new Mat(), Imgproc.RETR_LIST,
                              Imgproc.CHAIN_APPROX_SIMPLE);
