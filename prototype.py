@@ -56,19 +56,12 @@ def find_sets(attributes):
       yield i,j,k
 
 
-def attributes(card, use_kmeans=False):
+def attributes(card):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
   color, (min_hue, max_hue, min_sat) = card_color(hsv)
 
   # threshold out the shapes
-  if use_kmeans:
-    sat = hsv[:,:,1].ravel()
-    sat = sat.astype(np.float32)[:,None]
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-    _,labels,centers = cv2.kmeans(sat, 2, criteria, 10, cv2.KMEANS_PP_CENTERS)
-    thresh = (labels == np.argmax(centers)).reshape((hsv.shape[0], hsv.shape[1])).astype(np.uint8) * 255
-  else:
-    thresh = cv2.inRange(hsv, (min_hue,min_sat,0),(max_hue,255,255))
+  thresh = cv2.inRange(hsv, (min_hue,min_sat,0),(max_hue,255,255))
 
   contours, hier = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
   outer_mask = hier[0,:,-1] < 0
