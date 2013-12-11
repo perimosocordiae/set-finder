@@ -101,7 +101,7 @@ def card_shape(contours, side_err_scale=0.01):
       return 'diamond'
     if cv2.isContourConvex(approx):
       return 'oval'
-    return 'squiggle'
+    return 'ess'
   # all contours are very convex: try something else!
   for contour in contours:
     hull = cv2.convexHull(contour)
@@ -109,7 +109,7 @@ def card_shape(contours, side_err_scale=0.01):
     approx = cv2.approxPolyDP(hull, side_err_scale*al, True)
     if 4 <= len(approx) <= 6:
       return 'diamond'
-  return 'oval'  # or squiggle, not really sure here
+  return 'oval'  # or ess, not really sure here
 
 
 def card_color(hsv, min_saturation, min_value):
