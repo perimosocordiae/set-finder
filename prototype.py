@@ -39,8 +39,7 @@ def process_image(img):
   return img, rects, attrs
 
 
-def show_debug_view(img, rects, attrs, waitkey=None, name='',
-                    font=cv2.FONT_HERSHEY_SIMPLEX):
+def show_debug_view(img, rects, attrs, waitkey=None, name=''):
   print "%s: Found %d cards" % (name, len(rects))
   cv2.drawContours(img, rects, -1, GREEN, 3)
   for rect, attr in zip(rects, attrs):
@@ -50,8 +49,7 @@ def show_debug_view(img, rects, attrs, waitkey=None, name='',
   cv2.waitKey()
 
 
-def show_set_view(img, rects, attrs, waitkey=None, name='',
-                  font=cv2.FONT_HERSHEY_SIMPLEX):
+def show_set_view(img, rects, attrs, waitkey=None, name=''):
   for i,j,k in find_sets(attrs):
     cv2.drawContours(img, (rects[i],rects[j],rects[k]), -1, GREEN, 3)
     break
@@ -91,15 +89,18 @@ def attributes(card):
   color, (min_hue, max_hue, min_sat) = card_color(hsv)
 
   # threshold out the shapes
-  thresh = cv2.inRange(hsv, (min_hue,min_sat,0),(max_hue,255,255))
+  thresh = cv2.inRange(hsv, (min_hue,min_sat,0), (max_hue,255,255))
+  thresh[thresh>0] = 255
+  # do a round of dilation in case of broken edges
+  cv2.dilate(thresh, np.ones((9,9), dtype=np.uint8), dst=thresh)
 
   _, contours, hier = cv2.findContours(thresh, cv2.RETR_TREE,
                                        cv2.CHAIN_APPROX_SIMPLE)
   outer_mask = hier[0,:,-1] < 0
   filling = card_filling(outer_mask)
-  contours = [c for i,c in enumerate(contours) if outer_mask[i]]
-  shape = card_shape(contours)
-  return len(contours), filling, color, shape
+  outer_contours = [c for i,c in enumerate(contours) if outer_mask[i]]
+  shape = card_shape(outer_contours)
+  return len(outer_contours), filling, color, shape
 
 
 def card_filling(outer_mask):
@@ -137,15 +138,18 @@ def card_shape(contours, side_err_scale=0.01):
 
 
 def card_color(hsv):
-  # (min_hue, max_hue, min_sat)
-  hue_ranges = [(36,110,0),(120, 255, 0),(0, 10, 60)]
-  hue_names = ['green', 'purple', 'red']
-  hue_matches = np.zeros(3)
-  for i, hr in enumerate(hue_ranges):
-    lb = (hr[0],hr[2],0)
-    hue_matches[i] = cv2.inRange(hsv, lb, (hr[1],255,255)).sum()
-  ci = np.argmax(hue_matches)
-  return hue_names[ci], hue_ranges[ci]
+  # magic constants! (min_hue, max_hue, min_sat)
+  # TODO: replace this with a distribution-matching method
+  ranges = [(25, 110, 0), (120, 255, 0), (0, 10, 60)]
+  names = ['green', 'purple', 'red']
+  match_score = np.zeros(3)
+  for i, (min_hue, max_hue, min_sat) in enumerate(ranges):
+    mask = cv2.inRange(hsv, (min_hue, min_sat, 0), (max_hue, 255, 255)) > 0
+    # score by value when in the correct hue/sat range
+    # idea: low-value pixels are washed out, thus unreliable
+    match_score[i] = hsv[mask,2].sum()
+  ci = np.argmax(match_score)
+  return names[ci], ranges[ci]
 
 
 def angle_cos(contour):
