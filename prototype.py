@@ -1,11 +1,10 @@
-
 import cv2
 import numpy as np
 from itertools import combinations
+from argparse import ArgumentParser
 
 
-def main(debug=True):
-  imgfile = 'test_images/set02.png'
+def _main_static(imgfile, debug=False):
   img = cv2.imread(imgfile)
   if img is None:
     print 'Error: could not read %s' % imgfile
@@ -19,14 +18,14 @@ def main(debug=True):
   attrs = [attributes(crop_card(img, r)) for r in rects]
 
   if debug:
-    print "Found %d cards" % len(rects)
+    print "%s: Found %d cards" % (imgfile, len(rects))
     cv2.drawContours(img, rects, -1, (0, 255, 0), 3)
     for rect, attr in zip(rects, attrs):
       label = ''.join(str(a)[:3].title() for a in attr)
       pos = rect.min(axis=0)
       cv2.putText(img, label, tuple(pos+1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
       cv2.putText(img, label, tuple(pos), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255))
-    cv2.imshow('rects', img)
+    cv2.imshow('debug view for ' + imgfile, img)
     cv2.waitKey()
   else:
     for i,j,k in find_sets(attrs):
@@ -36,8 +35,12 @@ def main(debug=True):
       pos = (img.shape[0]/2, img.shape[1]/2 - 100)
       cv2.putText(img, "No sets found", (pos[0]+2,pos[1]+2), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
       cv2.putText(img, "No sets found", pos, cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-    cv2.imshow('set', img)
+    cv2.imshow('set view for ' + imgfile, img)
     cv2.waitKey()
+
+
+def _main_camera(debug=False):
+  raise NotImplementedError()
 
 
 def crop_card(img, bbox, width=450, height=450):
@@ -140,6 +143,19 @@ def find_rects(img, min_val=220, max_sat=70, side_err_scale=0.02, min_area=1000,
             angle_cos(cnt).max() < max_corner_angle_cos):
       rects.append(cnt)
   return rects
+
+
+def main():
+  ap = ArgumentParser()
+  ap.add_argument('--camera', action='store_true', help='Use webcam input')
+  ap.add_argument('--debug', action='store_true')
+  ap.add_argument('file', nargs='+', help='Input image file(s).')
+  args = ap.parse_args()
+  if args.camera:
+    _main_camera(debug=args.debug)
+  else:
+    for f in args.file:
+      _main_static(f, debug=args.debug)
 
 
 if __name__ == '__main__':
