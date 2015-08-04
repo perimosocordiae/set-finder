@@ -4,6 +4,12 @@ from numpy.core.umath_tests import inner1d
 from itertools import combinations
 from argparse import ArgumentParser
 
+# color tuples
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (0, 0, 255)
+GREEN = (0, 255, 0)
+
 
 def _main_static(imgfile, debug=False):
   img = cv2.imread(imgfile)
@@ -33,32 +39,35 @@ def process_image(img):
   return img, rects, attrs
 
 
-def show_debug_view(img, rects, attrs, waitkey=None, name=''):
+def show_debug_view(img, rects, attrs, waitkey=None, name='',
+                    font=cv2.FONT_HERSHEY_SIMPLEX):
   print "%s: Found %d cards" % (name, len(rects))
-  cv2.drawContours(img, rects, -1, (0, 255, 0), 3)
+  cv2.drawContours(img, rects, -1, GREEN, 3)
   for rect, attr in zip(rects, attrs):
     label = ''.join(str(a)[:3].title() for a in attr)
-    pos = rect.min(axis=0)
-    cv2.putText(img, label, tuple(pos+1), cv2.FONT_HERSHEY_SIMPLEX,
-                0.5, (0, 0, 0))
-    cv2.putText(img, label, tuple(pos), cv2.FONT_HERSHEY_SIMPLEX,
-                0.5, (255, 255, 255))
+    add_text(img, label, rect.min(axis=0), scale=0.5)
   cv2.imshow('debug view for ' + name, img)
   cv2.waitKey()
 
 
-def show_set_view(img, rects, attrs, waitkey=None, name=''):
+def show_set_view(img, rects, attrs, waitkey=None, name='',
+                  font=cv2.FONT_HERSHEY_SIMPLEX):
   for i,j,k in find_sets(attrs):
-    cv2.drawContours(img, (rects[i],rects[j],rects[k]), -1, (0,255,0), 3)
+    cv2.drawContours(img, (rects[i],rects[j],rects[k]), -1, GREEN, 3)
     break
   else:
     pos = (img.shape[0]/2, img.shape[1]/2 - 100)
-    cv2.putText(img, "No sets found", (pos[0]+2,pos[1]+2),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-    cv2.putText(img, "No sets found", pos, cv2.FONT_HERSHEY_SIMPLEX,
-                1, (0, 0, 255), 2)
+    add_text(img, "No sets found", pos, fgcolor=RED, thickness=2)
   cv2.imshow('set view for ' + name, img)
   cv2.waitKey()
+
+
+def add_text(img, text, pos, font=cv2.FONT_HERSHEY_SIMPLEX, scale=1,
+             bgcolor=BLACK, fgcolor=WHITE, thickness=1):
+  fgpos = tuple(pos)
+  bgpos = (fgpos[0] + thickness, fgpos[1] + thickness)
+  cv2.putText(img, text, bgpos, font, scale, bgcolor, thickness)
+  cv2.putText(img, text, fgpos, font, scale, fgcolor, thickness)
 
 
 def crop_card(img, bbox, width=450, height=450):
