@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from numpy.core.umath_tests import inner1d
 from itertools import combinations
 from argparse import ArgumentParser
 
@@ -139,10 +140,11 @@ def card_color(hsv):
 
 
 def angle_cos(contour):
-  p1 = np.roll(contour, -1, axis=0)
-  d1 = contour - p1
-  d2 = np.roll(contour, -2, axis=0) - p1
-  return np.abs((d1*d2).sum(axis=1) / np.sqrt((d1*d1).sum(axis=1)*(d2*d2).sum(axis=1)))
+  # hack in a wrap-around diff
+  d = np.diff(np.pad(contour, ((0,2),(0,0)), mode='wrap'), axis=0)
+  # compute normalized angles
+  norm = np.linalg.norm(d, axis=1)
+  return np.abs(inner1d(d[:-1], d[1:])) / (norm[:-1]*norm[1:])
 
 
 def find_rects(img, min_val=220, max_sat=70, side_err_scale=0.02, min_area=1000,
