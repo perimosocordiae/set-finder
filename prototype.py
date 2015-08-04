@@ -63,7 +63,7 @@ def attributes(card):
   # threshold out the shapes
   thresh = cv2.inRange(hsv, (min_hue,min_sat,0),(max_hue,255,255))
 
-  contours, hier = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+  _, contours, hier = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
   outer_mask = hier[0,:,-1] < 0
   filling = card_filling(outer_mask)
   contours = [c for i,c in enumerate(contours) if outer_mask[i]]
@@ -127,7 +127,7 @@ def angle_cos(contour):
 def find_rects(img, min_val=220, max_sat=70, side_err_scale=0.02, min_area=1000,  max_corner_angle_cos=0.3):
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
   thresh = cv2.inRange(hsv, (0,0,min_val),(255,max_sat,255))
-  contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+  _, contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
   rects = []
   for cnt in contours:
     side_err_thresh = side_err_scale * cv2.arcLength(cnt, True)
