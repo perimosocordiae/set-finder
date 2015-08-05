@@ -16,7 +16,7 @@ def _main_static(imgfile, debug=False, text=False, **kwargs):
   if img is None:
     print 'Error: could not read %s' % imgfile
     return
-  img, rects, attrs = process_image(img, **kwargs)
+  rects, attrs = process_image(img, **kwargs)
   if text:
     centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
     order = np.argsort(centers.dot([1000, 1]))  # hacky sort by x-position
