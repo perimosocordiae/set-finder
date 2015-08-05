@@ -84,14 +84,15 @@ def process_image(img, max_dim=800, **kwargs):
       rect /= scale
   # order rects by x-position
   centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
-  order = np.argsort(centers.dot([1000, 1]))  # hacky sort by x-position
+  order = np.argsort(centers[:,0])  # sort by x-position
   rects = [rects[i] for i in order]
   attrs = [attrs[i] for i in order]
   return rects, attrs
 
 
 def process_cards(img, side_err_scale=0.02, min_area=1000,
-                  max_corner_angle_cos=0.3, **kwargs):
+                  max_corner_angle_cos=0.3, max_aspect_ratio=2, **kwargs):
+  min_aspect_ratio = 1./max_aspect_ratio
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
   # start by finding card rectangles in hsv space
@@ -115,7 +116,7 @@ def process_cards(img, side_err_scale=0.02, min_area=1000,
       continue
     width, length = cv2.boundingRect(cnt)[2:]
     # check for card-like aspect ratio
-    if not (0.5 < (float(width) / length) < 2):
+    if not min_aspect_ratio < (float(width) / length) < max_aspect_ratio:
       continue
     # check for a reasonable size
     if width * length < min_area:
@@ -146,7 +147,7 @@ def process_one_card(img, rect, card_width=450, card_height=450, **kwargs):
 
 
 def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
-                       shape_close=10, **kwargs):
+                       shape_close=0, **kwargs):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
 
   # find the shapes, thresholding on high-saturation, low-value pixels
@@ -303,6 +304,7 @@ def parse_args():
   ag.add_argument('--side-error-scale', type=float, default=0.02)
   ag.add_argument('--min-area', type=int, default=1000)
   ag.add_argument('--max-corner-angle-cos', type=float, default=0.3)
+  ag.add_argument('--max-aspect-ratio', type=float, default=2.)
 
   ag.add_argument_group('Attribute Detection Parameters')
   ag.add_argument('--min-shape-area', type=float, default=0.05)
@@ -315,9 +317,9 @@ def parse_args():
   ag.add_argument('--card-height', type=int, default=450)
 
   ag = ap.add_argument_group('Camera-mode Key Bindings')
-  ag.add_argument('--updown-key', default='max_sat')
-  ag.add_argument('--lr-key', default='min_val')
-  ag.add_argument('--page-key', default='min_gray')
+  ag.add_argument('--updown-key', type=str)
+  ag.add_argument('--lr-key', type=str)
+  ag.add_argument('--page-key', type=str)
 
   args = ap.parse_args()
   if not (args.files or args.camera):
