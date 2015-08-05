@@ -83,10 +83,11 @@ def process_image(img, max_dim=800, **kwargs):
     for rect in rects:
       rect /= scale
   # order rects by x-position
-  centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
-  order = np.argsort(centers[:,0])  # sort by x-position
-  rects = [rects[i] for i in order]
-  attrs = [attrs[i] for i in order]
+  if rects:
+    centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
+    order = np.argsort(centers[:,0])  # sort by x-position
+    rects = [rects[i] for i in order]
+    attrs = [attrs[i] for i in order]
   return rects, attrs
 
 
