@@ -129,13 +129,17 @@ def process_one_card(img, rect, card_width=450, card_height=450, **kwargs):
 
 
 def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
-                       **kwargs):
+                       shape_close=10, **kwargs):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
 
   # find the shapes, thresholding on high-saturation, low-value pixels
   metric = hsv[:,:,1] - hsv[:,:,2]
   # histogram(metric) is bimodal, so Otsu thresholding is ideal
   _, mask = cv2.threshold(metric, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+  # optionally do a morphological close on the mask, to fill in some gaps
+  if shape_close > 0:
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (shape_close,shape_close))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
   contours = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
 
   if not contours:
@@ -154,8 +158,7 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
   # hack: use drawContours to make a mask of in-contour pixels
   mask[...] = 0
   cv2.drawContours(mask, contours, -1, 255, -1)
-  mask = cv2.erode(mask,
-                   cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10)))
+
   # find the color (red, green, purple)
   color = card_color(card, hsv, mask)
 
@@ -287,6 +290,7 @@ def parse_args():
   ag.add_argument_group('Attribute Detection Parameters')
   ag.add_argument('--min-shape-area', type=float, default=0.05)
   ag.add_argument('--max-shape-area', type=float, default=0.9)
+  ag.add_argument('--shape-close', type=int, default=0)
 
   ag = ap.add_argument_group('Internal Parameters')
   ag.add_argument('--max-dim', type=int, default=800)
