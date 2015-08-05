@@ -15,7 +15,7 @@ expected_out = {
         '3 open purple oval', '2 striped green oval', '2 open green diamond',
         '3 striped red oval', '2 solid green oval', '3 striped green oval'],
     'test_images/set03.png': [
-        '3 striped green oval', '1 striped red ess', '3 open green ess',
+        '3 striped green oval', '1 striped red diamond', '3 open green ess',
         '2 striped green oval', '3 striped red oval', '1 open purple diamond',
         '1 striped red ess', '2 solid red diamond', '2 open green diamond',
         '1 solid red diamond', '2 solid green oval', '3 open purple oval'],
@@ -25,9 +25,9 @@ expected_out = {
         '3 open green ess', '2 solid red diamond', '1 open purple diamond',
         '3 open purple oval', '1 striped red ess', '1 solid red diamond'],
     'test_images/set05.png': [
-        '2 solid green oval', '3 striped green oval', '3 striped red oval',
-        '2 open green diamond', '2 striped green oval', '3 open purple oval',
-        '2 solid red diamond', '1 striped red diamond', '3 open green ess',
+        '2 solid green oval', '2 open green diamond', '3 striped green oval',
+        '3 striped red oval', '2 striped green oval', '1 striped red diamond',
+        '3 open purple oval', '2 solid red diamond', '3 open green ess',
         '1 open purple diamond', '1 striped red ess', '1 solid red diamond'],
 }
 
