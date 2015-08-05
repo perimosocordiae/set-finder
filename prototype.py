@@ -18,9 +18,7 @@ def _main_static(imgfile, debug=False, text=False, **kwargs):
     return
   rects, attrs = process_image(img, **kwargs)
   if text:
-    centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
-    order = np.argsort(centers.dot([1000, 1]))  # hacky sort by x-position
-    print imgfile, [' '.join(map(str, attrs[i])) for i in order]
+    print imgfile, [' '.join(map(str, attr)) for attr in attrs]
   elif debug:
     win_name = 'debug view for ' + imgfile
     show_debug_view(img, rects, attrs, win_name=win_name)
@@ -84,6 +82,11 @@ def process_image(img, max_dim=800, **kwargs):
   if scale < 1:
     for rect in rects:
       rect /= scale
+  # order rects by x-position
+  centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
+  order = np.argsort(centers.dot([1000, 1]))  # hacky sort by x-position
+  rects = [rects[i] for i in order]
+  attrs = [attrs[i] for i in order]
   return rects, attrs
 
 
@@ -177,9 +180,11 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
 
 def show_debug_view(img, rects, attrs, frame_delay=-1, win_name=''):
   cv2.drawContours(img, rects, -1, GREEN, 3)
-  for rect, attr in zip(rects, attrs):
+  for idx, (rect, attr) in enumerate(zip(rects, attrs)):
     label = ''.join(str(a)[:3].title() for a in attr)
     add_text(img, label, rect.min(axis=0), scale=0.5)
+    add_text(img, str(idx+1), rect.mean(axis=0).astype(int) + (-5,5),
+             fgcolor=BLACK, bgcolor=None, thickness=3)
   cv2.imshow(win_name, img)
   return cv2.waitKey(frame_delay)
 
@@ -198,8 +203,9 @@ def show_set_view(img, rects, attrs, frame_delay=-1, win_name=''):
 def add_text(img, text, pos, font=cv2.FONT_HERSHEY_SIMPLEX, scale=1,
              bgcolor=BLACK, fgcolor=WHITE, thickness=1):
   fgpos = tuple(pos)
-  bgpos = (fgpos[0] + thickness, fgpos[1] + thickness)
-  cv2.putText(img, text, bgpos, font, scale, bgcolor, thickness)
+  if bgcolor is not None:
+    bgpos = (fgpos[0] + thickness, fgpos[1] + thickness)
+    cv2.putText(img, text, bgpos, font, scale, bgcolor, thickness)
   cv2.putText(img, text, fgpos, font, scale, fgcolor, thickness)
 
 
