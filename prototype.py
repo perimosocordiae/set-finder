@@ -87,17 +87,20 @@ def process_image(img, max_dim=800, **kwargs):
   return rects, attrs
 
 
-def process_cards(img, min_val=190, max_sat=130, min_gray=90,
-                  side_err_scale=0.02, min_area=1000,
+def process_cards(img, side_err_scale=0.02, min_area=1000,
                   max_corner_angle_cos=0.3, **kwargs):
-  # start by finding card rectangles based on threshold values
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-  gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-  thresh = ((hsv[:,:,1] <= max_sat) &
-            (gray >= min_gray) &
-            (hsv[:,:,2] >= min_val)).astype(np.uint8)*255
-  _, contours, _ = cv2.findContours(thresh, cv2.RETR_LIST,
+
+  # start by finding card rectangles in hsv space
+  metric = hsv[:,:,1].astype(float) * hsv[:,:,2].astype(float)
+  metric /= metric.max()
+  metric *= 255
+  metric = metric.astype(np.uint8)
+  # Otsu thresholding to split the white part of cards from non-cards
+  _, mask = cv2.threshold(metric, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+  _, contours, _ = cv2.findContours(mask.copy(), cv2.RETR_LIST,
                                     cv2.CHAIN_APPROX_SIMPLE)
+
   rects = []
   attrs = []
   for cnt in contours:
@@ -280,9 +283,6 @@ def parse_args():
   ap.add_argument('--text', action='store_true', help='Display text output')
 
   ag = ap.add_argument_group('Card Detection Parameters')
-  ag.add_argument('--min-val', type=int, default=190)
-  ag.add_argument('--max-sat', type=int, default=130)
-  ag.add_argument('--min-gray', type=int, default=90)
   ag.add_argument('--side-error-scale', type=float, default=0.02)
   ag.add_argument('--min-area', type=int, default=1000)
   ag.add_argument('--max-corner-angle-cos', type=float, default=0.3)
@@ -318,14 +318,14 @@ def main(camera=False, files=None, **kwargs):
       _main_static(f, **kwargs)
 
 
-# DEBUG only, don't commit
-def hist_lines(im, arr):
+# for debug purposes only
+def hist_lines(im, arr, color=RED):
   h = im.shape[0]
   hist_item = cv2.calcHist([arr],[0],None,[256],[0,256])
   cv2.normalize(hist_item,hist_item,0,h,cv2.NORM_MINMAX)
   hist=np.int32(np.around(hist_item))
   for x,y in enumerate(hist):
-    cv2.line(im,(x,h),(x,h-y),RED)
+    cv2.line(im,(x,h),(x,h-y), color)
 
 
 if __name__ == '__main__':
