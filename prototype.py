@@ -134,7 +134,8 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
 
   # find the shapes, thresholding on high-saturation, low-value pixels
   metric = hsv[:,:,1] - hsv[:,:,2]
-  mask = (metric > metric.mean()).astype(np.uint8) * 255
+  # histogram(metric) is bimodal, so Otsu thresholding is ideal
+  _, mask = cv2.threshold(metric, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
   contours = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
 
   if not contours:
