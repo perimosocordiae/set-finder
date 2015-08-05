@@ -29,7 +29,8 @@ def _main_static(imgfile, debug=False, text=False, **kwargs):
     show_set_view(img, rects, attrs, win_name=win_name)
 
 
-def _main_camera(debug=False, text=False, **kwargs):
+def _main_camera(debug=False, text=False, updown_key='', lr_key='',
+                 page_key='', **kwargs):
   show_fn = show_debug_view if debug else show_set_view
   win_name = 'debug viewer' if debug else 'set viewer'
   cv2.namedWindow(win_name)
@@ -39,6 +40,19 @@ def _main_camera(debug=False, text=False, **kwargs):
     print "Couldn't open a webcam for frame capture"
     return
 
+  key_control = {
+      2621440: (updown_key, -1),
+      2490368: (updown_key, +1),
+      2424832: (lr_key, -1),
+      2555904: (lr_key, +1),
+      2228224: (page_key, -1),
+      2162688: (page_key, +1),
+  }
+  # remove any inactive keys
+  for key, (param, _) in key_control.items():
+    if param not in kwargs:
+      del key_control[key]
+
   print 'Press escape to quit'
   got_frame, img = vc.read()
   while got_frame:
@@ -46,6 +60,13 @@ def _main_camera(debug=False, text=False, **kwargs):
     key = show_fn(img, rects, attrs, frame_delay=1, win_name=win_name)
     if key == 27:  # ESC
       break
+    elif key in key_control:
+      param, delta = key_control[key]
+      if delta < 0:
+        kwargs[param] = max(kwargs[param] + delta, 0)
+      else:
+        kwargs[param] = min(kwargs[param] + delta, 255)
+      print param, kwargs[param]
     got_frame, img = vc.read(img)
 
   cv2.destroyWindow(win_name)
@@ -268,6 +289,11 @@ def parse_args():
   ag.add_argument('--max-dim', type=int, default=800)
   ag.add_argument('--card-width', type=int, default=450)
   ag.add_argument('--card-height', type=int, default=450)
+
+  ag = ap.add_argument_group('Camera-mode Key Bindings')
+  ag.add_argument('--updown-key', default='max_sat')
+  ag.add_argument('--lr-key', default='min_val')
+  ag.add_argument('--page-key', default='min_gray')
 
   args = ap.parse_args()
   if not (args.files or args.camera):
