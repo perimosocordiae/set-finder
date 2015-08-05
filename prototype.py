@@ -42,7 +42,7 @@ def _main_camera(debug=False, text=False, **kwargs):
   print 'Press escape to quit'
   got_frame, img = vc.read()
   while got_frame:
-    img, rects, attrs = process_image(img, **kwargs)
+    rects, attrs = process_image(img, **kwargs)
     key = show_fn(img, rects, attrs, frame_delay=1, win_name=win_name)
     if key == 27:  # ESC
       break
@@ -58,9 +58,91 @@ def process_image(img, max_dim=800, **kwargs):
     img = cv2.resize(img, (0, 0), fx=scale, fy=scale,
                      interpolation=cv2.INTER_AREA)
 
-  rects = find_rects(img, **kwargs)
-  attrs = filter(None, [attributes(crop_card(img, r), **kwargs) for r in rects])
-  return img, rects, attrs
+  rects, attrs = process_cards(img, **kwargs)
+  # rescale rects to match original image scale
+  if scale < 1:
+    for rect in rects:
+      rect /= scale
+  return rects, attrs
+
+
+def process_cards(img, min_val=190, max_sat=130, min_gray=90,
+                  side_err_scale=0.02, min_area=1000,
+                  max_corner_angle_cos=0.3, **kwargs):
+  # start by finding card rectangles based on threshold values
+  hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+  gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+  thresh = ((hsv[:,:,1] <= max_sat) &
+            (gray >= min_gray) &
+            (hsv[:,:,2] >= min_val)).astype(np.uint8)*255
+  _, contours, _ = cv2.findContours(thresh, cv2.RETR_LIST,
+                                    cv2.CHAIN_APPROX_SIMPLE)
+  rects = []
+  attrs = []
+  for cnt in contours:
+    side_err_thresh = side_err_scale * cv2.arcLength(cnt, True)
+    # approximate the contour with fewer edges
+    cnt = cv2.approxPolyDP(cnt, side_err_thresh, True)[:,0]  # <- squeeze
+    if not (  # TODO: check convexityDefects instead of isContourConvex
+            len(cnt) == 4 and
+            cv2.contourArea(cnt) > min_area and
+            cv2.isContourConvex(cnt) and
+            angle_cos(cnt).max() < max_corner_angle_cos):
+      continue
+    # now find the attributes for this card
+    attr = process_one_card(img, cnt, **kwargs)
+    if attr is not None:
+      rects.append(cnt)
+      attrs.append(attr)
+  return rects, attrs
+
+
+def process_one_card(img, rect, card_width=450, card_height=450, **kwargs):
+  # Crop the card out of the overall image
+  h = np.array([[0,0],[card_width-1,0]
+                [card_width-1,card_height-1],[0,card_height-1]], np.float32)
+  transform = cv2.getPerspectiveTransform(rect.astype(np.float32), h)
+  card = cv2.warpPerspective(img, transform, (card_width, card_height))
+  # Return the card's attributes
+  return process_attributes(card, **kwargs)
+
+
+def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
+                       **kwargs):
+  hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
+
+  # find the shapes, thresholding on high-value pixels
+  val = hsv[:,:,2]
+  mean_val = val.mean()
+  thresh = (val > mean_val).astype(np.uint8) * 255
+  contours = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
+
+  # filter out contours outside the bounds (as a fraction of total card area)
+  dims = np.array([cv2.boundingRect(c)[2:] for c in contours], dtype=float)
+  dims /= thresh.shape  # scale to [0,1] in card dimensions
+  areas = np.product(dims, axis=1)
+  contours = [c for a,c in zip(areas, contours)
+              if min_shape_area < a < max_shape_area]
+
+  if not contours:
+    return
+
+  # hack: use drawContours to make a mask of in-contour pixels
+  thresh[...] = 0
+  cv2.drawContours(thresh, contours, -1, 255, -1)
+  thresh = cv2.erode(thresh,
+                     cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10)))
+  # find the color (red, green, purple)
+  color = card_color(card, hsv, thresh)
+
+  # XXX: re-finding the contours here
+  _, contours, hier = cv2.findContours(thresh, cv2.RETR_TREE,
+                                       cv2.CHAIN_APPROX_SIMPLE)
+  outer_mask = hier[0,:,-1] < 0
+  filling = card_filling(outer_mask)
+  outer_contours = [c for i,c in enumerate(contours) if outer_mask[i]]
+  shape = card_shape(outer_contours)
+  return len(outer_contours), filling, color, shape
 
 
 def show_debug_view(img, rects, attrs, frame_delay=-1, win_name=''):
@@ -91,13 +173,6 @@ def add_text(img, text, pos, font=cv2.FONT_HERSHEY_SIMPLEX, scale=1,
   cv2.putText(img, text, fgpos, font, scale, fgcolor, thickness)
 
 
-def crop_card(img, bbox, width=450, height=450):
-  bbox = bbox.astype(np.float32)
-  h = np.array([[0,0],[width-1,0],[width-1,height-1],[0,height-1]], np.float32)
-  transform = cv2.getPerspectiveTransform(bbox, h)
-  return cv2.warpPerspective(img, transform, (width, height))
-
-
 def find_sets(attributes):
   for i, j, k in combinations(xrange(len(attributes)), 3):
     for items in zip(attributes[i],attributes[j],attributes[k]):
@@ -105,42 +180,6 @@ def find_sets(attributes):
         break
     else:
       yield i,j,k
-
-
-def attributes(card, **kwargs):
-  hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
-
-  # find the shapes, thresholding on high-value pixels
-  val = hsv[:,:,2]
-  mean_val = val.mean()
-  thresh = (val > mean_val).astype(np.uint8) * 255
-  contours = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
-
-  # filter out contours less than 5% or more than 90% of total card area
-  dims = np.array([cv2.boundingRect(c)[2:] for c in contours], dtype=float)
-  dims /= thresh.shape  # scale to [0,1] in card dimensions
-  areas = np.product(dims, axis=1)
-  contours = [c for a,c in zip(areas, contours) if 0.05 < a < 0.9]
-
-  if not contours:
-    return
-
-  # hack: use drawContours to make a mask of in-contour pixels
-  thresh[...] = 0
-  cv2.drawContours(thresh, contours, -1, 255, -1)
-  thresh = cv2.erode(thresh,
-                     cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10)))
-  # find the color (red, green, purple)
-  color = card_color(card, hsv, thresh)
-
-  # XXX: re-finding the contours here
-  _, contours, hier = cv2.findContours(thresh, cv2.RETR_TREE,
-                                       cv2.CHAIN_APPROX_SIMPLE)
-  outer_mask = hier[0,:,-1] < 0
-  filling = card_filling(outer_mask)
-  outer_contours = [c for i,c in enumerate(contours) if outer_mask[i]]
-  shape = card_shape(outer_contours)
-  return len(outer_contours), filling, color, shape
 
 
 def card_filling(outer_mask):
@@ -201,32 +240,6 @@ def angle_cos(contour):
   return np.abs(inner1d(d[:-1], d[1:])) / (norm[:-1]*norm[1:])
 
 
-def find_rects(img, min_val=190, max_sat=130, min_gray=90,
-               side_err_scale=0.02, min_area=1000, max_corner_angle_cos=0.3,
-               **kwargs):
-  hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-  gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-  thresh = ((hsv[:,:,1] <= max_sat) &
-            (gray >= min_gray) &
-            (hsv[:,:,2] >= min_val)).astype(np.uint8)*255
-
-  _, contours, _ = cv2.findContours(thresh, cv2.RETR_LIST,
-                                    cv2.CHAIN_APPROX_SIMPLE)
-  rects = []
-  for cnt in contours:
-    side_err_thresh = side_err_scale * cv2.arcLength(cnt, True)
-    # approximate the contour with fewer edges
-    cnt = cv2.approxPolyDP(cnt, side_err_thresh, True)[:,0]  # <- squeeze
-    if (  # TODO: check convexityDefects instead of isContourConvex
-            len(cnt) == 4 and
-            cv2.contourArea(cnt) > min_area and
-            cv2.isContourConvex(cnt) and
-            angle_cos(cnt).max() < max_corner_angle_cos):
-      rects.append(cnt)
-  return rects
-
-
 def parse_args():
   ap = ArgumentParser()
 
@@ -235,7 +248,6 @@ def parse_args():
                   help='Input image file(s).')
   ag.add_argument('--camera', action='store_true',
                   help='Use webcam input instead of static files.')
-  ag.add_argument('--max-dim', type=int, default=800)
 
   ap.add_argument('--debug', action='store_true')
   ap.add_argument('--text', action='store_true', help='Display text output')
@@ -247,6 +259,15 @@ def parse_args():
   ag.add_argument('--side-error-scale', type=float, default=0.02)
   ag.add_argument('--min-area', type=int, default=1000)
   ag.add_argument('--max-corner-angle-cos', type=float, default=0.3)
+
+  ag.add_argument_group('Attribute Detection Parameters')
+  ag.add_argument('--min-shape-area', type=float, default=0.05)
+  ag.add_argument('--max-shape-area', type=float, default=0.9)
+
+  ag = ap.add_argument_group('Internal Parameters')
+  ag.add_argument('--max-dim', type=int, default=800)
+  ag.add_argument('--card-width', type=int, default=450)
+  ag.add_argument('--card-height', type=int, default=450)
 
   args = ap.parse_args()
   if not (args.files or args.camera):
@@ -262,6 +283,16 @@ def main(camera=False, files=None, **kwargs):
   else:
     for f in files:
       _main_static(f, **kwargs)
+
+
+# DEBUG only, don't commit
+def hist_lines(im, arr):
+  h = im.shape[0]
+  hist_item = cv2.calcHist([arr],[0],None,[256],[0,256])
+  cv2.normalize(hist_item,hist_item,0,h,cv2.NORM_MINMAX)
+  hist=np.int32(np.around(hist_item))
+  for x,y in enumerate(hist):
+    cv2.line(im,(x,h),(x,h-y),RED)
 
 
 if __name__ == '__main__':
