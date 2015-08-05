@@ -110,11 +110,22 @@ def process_cards(img, side_err_scale=0.02, min_area=1000,
     side_err_thresh = side_err_scale * cv2.arcLength(cnt, True)
     # approximate the contour with fewer edges
     cnt = cv2.approxPolyDP(cnt, side_err_thresh, True)[:,0]  # <- squeeze
-    if not (  # TODO: check convexityDefects instead of isContourConvex
-            len(cnt) == 4 and
-            cv2.contourArea(cnt) > min_area and
-            cv2.isContourConvex(cnt) and
-            angle_cos(cnt).max() < max_corner_angle_cos):
+    # cards need four sides
+    if len(cnt) != 4:
+      continue
+    width, length = cv2.boundingRect(cnt)[2:]
+    # check for card-like aspect ratio
+    if not (0.5 < (float(width) / length) < 2):
+      continue
+    # check for a reasonable size
+    if width * length < min_area:
+      continue
+    # check for convexity
+    # TODO: use convexityDefects instead of isContourConvex
+    if not cv2.isContourConvex(cnt):
+      continue
+    # check for roughly right angles
+    if angle_cos(cnt).max() >= max_corner_angle_cos:
       continue
     # now find the attributes for this card
     attr = process_one_card(img, cnt, **kwargs)
