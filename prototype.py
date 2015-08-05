@@ -16,7 +16,7 @@ def _main_static(imgfile, debug=False, text=False, **kwargs):
   if img is None:
     print 'Error: could not read %s' % imgfile
     return
-  img, rects, attrs = process_image(img)
+  img, rects, attrs = process_image(img, **kwargs)
   if text:
     centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
     order = np.argsort(centers.dot([1000, 1]))  # hacky sort by x-position
@@ -29,7 +29,7 @@ def _main_static(imgfile, debug=False, text=False, **kwargs):
     show_set_view(img, rects, attrs, win_name=win_name)
 
 
-def _main_camera(debug=False, **kwargs):
+def _main_camera(debug=False, text=False, **kwargs):
   show_fn = show_debug_view if debug else show_set_view
   win_name = 'debug viewer' if debug else 'set viewer'
   cv2.namedWindow(win_name)
@@ -42,7 +42,7 @@ def _main_camera(debug=False, **kwargs):
   print 'Press escape to quit'
   got_frame, img = vc.read()
   while got_frame:
-    img, rects, attrs = process_image(img)
+    img, rects, attrs = process_image(img, **kwargs)
     key = show_fn(img, rects, attrs, frame_delay=1, win_name=win_name)
     if key == 27:  # ESC
       break
@@ -51,15 +51,15 @@ def _main_camera(debug=False, **kwargs):
   cv2.destroyWindow(win_name)
 
 
-def process_image(img):
+def process_image(img, max_dim=800, **kwargs):
   # rescale if necessary
-  scale = 800./max(img.shape[:2])
+  scale = float(max_dim)/max(img.shape[:2])
   if scale < 1:
     img = cv2.resize(img, (0, 0), fx=scale, fy=scale,
                      interpolation=cv2.INTER_AREA)
 
-  rects = find_rects(img)
-  attrs = filter(None, [attributes(crop_card(img, r)) for r in rects])
+  rects = find_rects(img, **kwargs)
+  attrs = filter(None, [attributes(crop_card(img, r), **kwargs) for r in rects])
   return img, rects, attrs
 
 
@@ -107,7 +107,7 @@ def find_sets(attributes):
       yield i,j,k
 
 
-def attributes(card):
+def attributes(card, **kwargs):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
 
   # find the shapes, thresholding on high-value pixels
@@ -202,7 +202,8 @@ def angle_cos(contour):
 
 
 def find_rects(img, min_val=190, max_sat=130, min_gray=90,
-               side_err_scale=0.02, min_area=1000, max_corner_angle_cos=0.3):
+               side_err_scale=0.02, min_area=1000, max_corner_angle_cos=0.3,
+               **kwargs):
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
   gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -226,21 +227,42 @@ def find_rects(img, min_val=190, max_sat=130, min_gray=90,
   return rects
 
 
-def main():
+def parse_args():
   ap = ArgumentParser()
-  ap.add_argument('--camera', action='store_true', help='Use webcam input')
+
+  ag = ap.add_argument_group('Input Arguments')
+  ag.add_argument('files', metavar='file', nargs='*',
+                  help='Input image file(s).')
+  ag.add_argument('--camera', action='store_true',
+                  help='Use webcam input instead of static files.')
+  ag.add_argument('--max-dim', type=int, default=800)
+
   ap.add_argument('--debug', action='store_true')
   ap.add_argument('--text', action='store_true', help='Display text output')
-  ap.add_argument('file', nargs='*', help='Input image file(s).')
+
+  ag = ap.add_argument_group('Card Detection Parameters')
+  ag.add_argument('--min-val', type=int, default=190)
+  ag.add_argument('--max-sat', type=int, default=130)
+  ag.add_argument('--min-gray', type=int, default=90)
+  ag.add_argument('--side-error-scale', type=float, default=0.02)
+  ag.add_argument('--min-area', type=int, default=1000)
+  ag.add_argument('--max-corner-angle-cos', type=float, default=0.3)
+
   args = ap.parse_args()
-  if args.camera:
-    _main_camera(**vars(args))
-  elif not args.file:
+  if not (args.files or args.camera):
     ap.error('too few arguments')
+  if args.files and args.camera:
+    ap.error('cannot use both static files and webcam input')
+  return args
+
+
+def main(camera=False, files=None, **kwargs):
+  if camera:
+    _main_camera(**kwargs)
   else:
-    for f in args.file:
-      _main_static(f, **vars(args))
+    for f in files:
+      _main_static(f, **kwargs)
 
 
 if __name__ == '__main__':
-  main()
+  main(**vars(parse_args()))
