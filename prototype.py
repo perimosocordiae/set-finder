@@ -53,7 +53,7 @@ def process_image(img):
                      interpolation=cv2.INTER_AREA)
 
   rects = find_rects(img)
-  attrs = [attributes(crop_card(img, r)) for r in rects]
+  attrs = filter(None, [attributes(crop_card(img, r)) for r in rects])
   return img, rects, attrs
 
 
@@ -103,14 +103,31 @@ def find_sets(attributes):
 
 def attributes(card):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
-  color, (min_hue, max_hue, min_sat) = card_color(hsv)
 
-  # threshold out the shapes
-  thresh = cv2.inRange(hsv, (min_hue,min_sat,0), (max_hue,255,255))
-  thresh[thresh>0] = 255
-  # do a round of dilation in case of broken edges
-  cv2.dilate(thresh, np.ones((9,9), dtype=np.uint8), dst=thresh)
+  # find the shapes, thresholding on high-value pixels
+  val = hsv[:,:,2]
+  mean_val = val.mean()
+  thresh = (val > mean_val).astype(np.uint8) * 255
+  contours = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
 
+  # filter out contours less than 5% or more than 90% of total card area
+  dims = np.array([cv2.boundingRect(c)[2:] for c in contours], dtype=float)
+  dims /= thresh.shape  # scale to [0,1] in card dimensions
+  areas = np.product(dims, axis=1)
+  contours = [c for a,c in zip(areas, contours) if 0.05 < a < 0.9]
+
+  if not contours:
+    return
+
+  # hack: use drawContours to make a mask of in-contour pixels
+  thresh[...] = 0
+  cv2.drawContours(thresh, contours, -1, 255, -1)
+  thresh = cv2.erode(thresh,
+                     cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10)))
+  # find the color (red, green, purple)
+  color = card_color(card, hsv, thresh)
+
+  # XXX: re-finding the contours here
   _, contours, hier = cv2.findContours(thresh, cv2.RETR_TREE,
                                        cv2.CHAIN_APPROX_SIMPLE)
   outer_mask = hier[0,:,-1] < 0
@@ -154,19 +171,20 @@ def card_shape(contours, side_err_scale=0.01):
   return 'oval'  # or ess, not really sure here
 
 
-def card_color(hsv):
+def card_color(card, hsv, thresh):
+  in_contour = hsv[thresh!=0][None]
   # magic constants! (min_hue, max_hue, min_sat)
   # TODO: replace this with a distribution-matching method
   ranges = [(25, 110, 0), (120, 255, 0), (0, 10, 60)]
   names = ['green', 'purple', 'red']
   match_score = np.zeros(3)
   for i, (min_hue, max_hue, min_sat) in enumerate(ranges):
-    mask = cv2.inRange(hsv, (min_hue, min_sat, 0), (max_hue, 255, 255)) > 0
+    mask = cv2.inRange(in_contour, (min_hue, min_sat, 0), (max_hue, 255, 255))
     # score by value when in the correct hue/sat range
     # idea: low-value pixels are washed out, thus unreliable
-    match_score[i] = hsv[mask,2].sum()
+    match_score[i] = in_contour[mask>0,2].sum()
   ci = np.argmax(match_score)
-  return names[ci], ranges[ci]
+  return names[ci]
 
 
 def angle_cos(contour):
