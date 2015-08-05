@@ -24,7 +24,25 @@ def _main_static(imgfile, debug=False):
 
 
 def _main_camera(debug=False):
-  raise NotImplementedError()
+  show_fn = show_debug_view if debug else show_set_view
+  win_name = 'debug viewer' if debug else 'set viewer'
+  cv2.namedWindow(win_name)
+  vc = cv2.VideoCapture(0)
+
+  if not vc.isOpened():
+    print "Couldn't open a webcam for frame capture"
+    return
+
+  print 'Press escape to quit'
+  got_frame, img = vc.read()
+  while got_frame:
+    img, rects, attrs = process_image(img)
+    key = show_fn(img, rects, attrs, frame_delay=1, win_name=win_name)
+    if key == 27:  # ESC
+      break
+    got_frame, img = vc.read(img)
+
+  cv2.destroyWindow(win_name)
 
 
 def process_image(img):
@@ -39,25 +57,24 @@ def process_image(img):
   return img, rects, attrs
 
 
-def show_debug_view(img, rects, attrs, waitkey=None, name=''):
-  print "%s: Found %d cards" % (name, len(rects))
+def show_debug_view(img, rects, attrs, frame_delay=-1, win_name=''):
   cv2.drawContours(img, rects, -1, GREEN, 3)
   for rect, attr in zip(rects, attrs):
     label = ''.join(str(a)[:3].title() for a in attr)
     add_text(img, label, rect.min(axis=0), scale=0.5)
-  cv2.imshow('debug view for ' + name, img)
-  cv2.waitKey()
+  cv2.imshow(win_name, img)
+  return cv2.waitKey(frame_delay)
 
 
-def show_set_view(img, rects, attrs, waitkey=None, name=''):
+def show_set_view(img, rects, attrs, frame_delay=-1, win_name=''):
   for i,j,k in find_sets(attrs):
     cv2.drawContours(img, (rects[i],rects[j],rects[k]), -1, GREEN, 3)
     break
   else:
     pos = (img.shape[0]/2, img.shape[1]/2 - 100)
     add_text(img, "No sets found", pos, fgcolor=RED, thickness=2)
-  cv2.imshow('set view for ' + name, img)
-  cv2.waitKey()
+  cv2.imshow(win_name, img)
+  return cv2.waitKey(frame_delay)
 
 
 def add_text(img, text, pos, font=cv2.FONT_HERSHEY_SIMPLEX, scale=1,
@@ -184,10 +201,12 @@ def main():
   ap = ArgumentParser()
   ap.add_argument('--camera', action='store_true', help='Use webcam input')
   ap.add_argument('--debug', action='store_true')
-  ap.add_argument('file', nargs='+', help='Input image file(s).')
+  ap.add_argument('file', nargs='*', help='Input image file(s).')
   args = ap.parse_args()
   if args.camera:
     _main_camera(debug=args.debug)
+  elif not args.file:
+    ap.error('too few arguments')
   else:
     for f in args.file:
       _main_static(f, debug=args.debug)
