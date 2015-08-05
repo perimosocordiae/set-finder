@@ -18,9 +18,11 @@ def _main_static(imgfile, debug=False):
     return
   img, rects, attrs = process_image(img)
   if debug:
-    show_debug_view(img, rects, attrs, name=imgfile)
+    win_name = 'debug view for ' + imgfile
+    show_debug_view(img, rects, attrs, win_name=win_name)
   else:
-    show_set_view(img, rects, attrs, name=imgfile)
+    win_name = 'set view for ' + imgfile
+    show_set_view(img, rects, attrs, win_name=win_name)
 
 
 def _main_camera(debug=False):
