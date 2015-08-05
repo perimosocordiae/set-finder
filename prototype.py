@@ -67,7 +67,7 @@ def _main_camera(debug=False, text=False, updown_key='', lr_key='',
       print param, kwargs[param]
     got_frame, img = vc.read(img)
 
-  cv2.destroyWindow(win_name)
+  cv2.destroyAllWindows()
 
 
 def process_image(img, max_dim=800, **kwargs):
