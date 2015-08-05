@@ -41,8 +41,8 @@ def _main_camera(debug=False, text=False, updown_key='', lr_key='',
   key_control = {
       2621440: (updown_key, -1),
       2490368: (updown_key, +1),
-      2424832: (lr_key, -1),
-      2555904: (lr_key, +1),
+      2424832: (lr_key, -0.01),
+      2555904: (lr_key, +0.01),
       2228224: (page_key, -1),
       2162688: (page_key, +1),
   }
@@ -97,9 +97,7 @@ def process_cards(img, side_err_scale=0.02, min_area=1000,
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
   # start by finding card rectangles in hsv space
-  metric = hsv[:,:,1].astype(float) * hsv[:,:,2].astype(float)
-  metric /= metric.max()
-  metric *= 255
+  metric = (hsv[:,:,2].astype(int) * (255 - hsv[:,:,1])) / 255
   metric = metric.astype(np.uint8)
   # Otsu thresholding to split the white part of cards from non-cards
   _, mask = cv2.threshold(metric, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -302,7 +300,7 @@ def parse_args():
   ap.add_argument('--text', action='store_true', help='Display text output')
 
   ag = ap.add_argument_group('Card Detection Parameters')
-  ag.add_argument('--side-error-scale', type=float, default=0.02)
+  ag.add_argument('--side-err-scale', type=float, default=0.02)
   ag.add_argument('--min-area', type=int, default=1000)
   ag.add_argument('--max-corner-angle-cos', type=float, default=0.3)
   ag.add_argument('--max-aspect-ratio', type=float, default=2.)
