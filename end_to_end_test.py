@@ -34,6 +34,7 @@ expected_out = {
 
 def main():
   real_stdout = sys.stdout
+  failed = False
   for filename, expected in expected_out.iteritems():
     test_out = StringIO()
     sys.stdout = test_out
@@ -42,19 +43,21 @@ def main():
     _, result = test_out.getvalue().strip().split(' ', 1)
     actual = ast.literal_eval(result)
     if len(actual) != len(expected):
-      print 'Test failure on %s:' % filename
+      print '\nTest failure on %s:' % filename
       print ' mismatching number of cards:',
       print 'expected %d, got %d' % (len(expected), len(actual))
-      break
+      failed = True
+      continue
     mismatches = [(i+1,a,e) for i,(a,e) in enumerate(zip(actual, expected))
                   if a != e]
     if mismatches:
-      print 'Test failure on %s:' % filename
+      print '\nTest failure on %s:' % filename
       for i, a, e in mismatches:
         mm = [' != '.join(p) for p in zip(a.split(), e.split()) if p[0]!=p[1]]
         print ' card %02d:' % i, ', '.join(mm)
-      break
-  else:
+      failed = True
+
+  if not failed:
     print 'All tests passed!'
 
 if __name__ == '__main__':
