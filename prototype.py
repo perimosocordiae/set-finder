@@ -132,15 +132,17 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
                        **kwargs):
   hsv = cv2.cvtColor(card, cv2.COLOR_BGR2HSV)
 
-  # find the shapes, thresholding on high-value pixels
-  val = hsv[:,:,2]
-  mean_val = val.mean()
-  thresh = (val > mean_val).astype(np.uint8) * 255
-  contours = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
+  # find the shapes, thresholding on high-saturation, low-value pixels
+  metric = hsv[:,:,1] - hsv[:,:,2]
+  mask = (metric > metric.mean()).astype(np.uint8) * 255
+  contours = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
+
+  if not contours:
+    return
 
   # filter out contours outside the bounds (as a fraction of total card area)
   dims = np.array([cv2.boundingRect(c)[2:] for c in contours], dtype=float)
-  dims /= thresh.shape  # scale to [0,1] in card dimensions
+  dims /= card.shape[:2]  # scale to [0,1] in card dimensions
   areas = np.product(dims, axis=1)
   contours = [c for a,c in zip(areas, contours)
               if min_shape_area < a < max_shape_area]
@@ -149,15 +151,15 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
     return
 
   # hack: use drawContours to make a mask of in-contour pixels
-  thresh[...] = 0
-  cv2.drawContours(thresh, contours, -1, 255, -1)
-  thresh = cv2.erode(thresh,
-                     cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10)))
+  mask[...] = 0
+  cv2.drawContours(mask, contours, -1, 255, -1)
+  mask = cv2.erode(mask,
+                   cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10)))
   # find the color (red, green, purple)
-  color = card_color(card, hsv, thresh)
+  color = card_color(card, hsv, mask)
 
   # XXX: re-finding the contours here
-  _, contours, hier = cv2.findContours(thresh, cv2.RETR_TREE,
+  _, contours, hier = cv2.findContours(mask, cv2.RETR_TREE,
                                        cv2.CHAIN_APPROX_SIMPLE)
   outer_mask = hier[0,:,-1] < 0
   filling = card_filling(outer_mask)
