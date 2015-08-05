@@ -99,7 +99,7 @@ def process_cards(img, min_val=190, max_sat=130, min_gray=90,
 
 def process_one_card(img, rect, card_width=450, card_height=450, **kwargs):
   # Crop the card out of the overall image
-  h = np.array([[0,0],[card_width-1,0]
+  h = np.array([[0,0],[card_width-1,0],
                 [card_width-1,card_height-1],[0,card_height-1]], np.float32)
   transform = cv2.getPerspectiveTransform(rect.astype(np.float32), h)
   card = cv2.warpPerspective(img, transform, (card_width, card_height))
