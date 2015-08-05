@@ -177,10 +177,15 @@ def angle_cos(contour):
   return np.abs(inner1d(d[:-1], d[1:])) / (norm[:-1]*norm[1:])
 
 
-def find_rects(img, min_val=220, max_sat=70, side_err_scale=0.02, min_area=1000,
-               max_corner_angle_cos=0.3):
+def find_rects(img, min_val=190, max_sat=130, min_gray=90,
+               side_err_scale=0.02, min_area=1000, max_corner_angle_cos=0.3):
   hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-  thresh = cv2.inRange(hsv, (0,0,min_val),(255,max_sat,255))
+  gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+  thresh = ((hsv[:,:,1] <= max_sat) &
+            (gray >= min_gray) &
+            (hsv[:,:,2] >= min_val)).astype(np.uint8)*255
+
   _, contours, _ = cv2.findContours(thresh, cv2.RETR_LIST,
                                     cv2.CHAIN_APPROX_SIMPLE)
   rects = []
