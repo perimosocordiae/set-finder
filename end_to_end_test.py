@@ -10,8 +10,8 @@ expected_out = {
         '1 open purple diamond', '3 striped red oval', '2 striped green oval',
         '1 striped red diamond', '3 open green ess', '3 striped green oval'],
     'test_images/set02.png': [
-        '1 solid red diamond', '1 striped red ess', '3 open green ess',
-        '1 open purple diamond', '2 solid red diamond', '1 striped red diamond',
+        '3 open green ess', '1 striped red ess', '1 solid red diamond',
+        '1 open purple diamond', '1 striped red diamond', '2 solid red diamond',
         '3 open purple oval', '2 striped green oval', '2 open green diamond',
         '3 striped red oval', '2 solid green oval', '3 striped green oval'],
     'test_images/set03.png': [
@@ -46,11 +46,13 @@ def main():
       print ' mismatching number of cards:',
       print 'expected %d, got %d' % (len(expected), len(actual))
       break
-    mismatches = [(a,e) for a,e in zip(actual, expected) if a != e]
+    mismatches = [(i+1,a,e) for i,(a,e) in enumerate(zip(actual, expected))
+                  if a != e]
     if mismatches:
       print 'Test failure on %s:' % filename
-      for mm in mismatches:
-        print ' %s != %s' % mm
+      for i, a, e in mismatches:
+        mm = [' != '.join(p) for p in zip(a.split(), e.split()) if p[0]!=p[1]]
+        print ' card %02d:' % i, ', '.join(mm)
       break
   else:
     print 'All tests passed!'
