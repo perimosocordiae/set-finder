@@ -11,13 +11,17 @@ RED = (0, 0, 255)
 GREEN = (0, 255, 0)
 
 
-def _main_static(imgfile, debug=False):
+def _main_static(imgfile, debug=False, text=False, **kwargs):
   img = cv2.imread(imgfile)
   if img is None:
     print 'Error: could not read %s' % imgfile
     return
   img, rects, attrs = process_image(img)
-  if debug:
+  if text:
+    centers = np.array([cv2.minEnclosingCircle(c)[0] for c in rects])
+    order = np.argsort(centers.dot([1000, 1]))  # hacky sort by x-position
+    print imgfile, [' '.join(map(str, attrs[i])) for i in order]
+  elif debug:
     win_name = 'debug view for ' + imgfile
     show_debug_view(img, rects, attrs, win_name=win_name)
   else:
@@ -25,7 +29,7 @@ def _main_static(imgfile, debug=False):
     show_set_view(img, rects, attrs, win_name=win_name)
 
 
-def _main_camera(debug=False):
+def _main_camera(debug=False, **kwargs):
   show_fn = show_debug_view if debug else show_set_view
   win_name = 'debug viewer' if debug else 'set viewer'
   cv2.namedWindow(win_name)
@@ -226,15 +230,16 @@ def main():
   ap = ArgumentParser()
   ap.add_argument('--camera', action='store_true', help='Use webcam input')
   ap.add_argument('--debug', action='store_true')
+  ap.add_argument('--text', action='store_true', help='Display text output')
   ap.add_argument('file', nargs='*', help='Input image file(s).')
   args = ap.parse_args()
   if args.camera:
-    _main_camera(debug=args.debug)
+    _main_camera(**vars(args))
   elif not args.file:
     ap.error('too few arguments')
   else:
     for f in args.file:
-      _main_static(f, debug=args.debug)
+      _main_static(f, **vars(args))
 
 
 if __name__ == '__main__':

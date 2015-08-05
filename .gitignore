@@ -1,3 +1,4 @@
 android_app/bin
 android_app/gen
 android_app/local.properties
+*.pyc
