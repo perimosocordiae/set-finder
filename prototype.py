@@ -98,10 +98,17 @@ def process_cards(img, side_err_scale=0.02, min_area=1000,
 
   # start by finding card rectangles in hsv space
   metric = (hsv[:,:,2].astype(int) * (255 - hsv[:,:,1])) / 255
+  # Other options for metrics. TODO: find a better global solution
+  # metric = (hsv[:,:,2].astype(int) * hsv[:,:,1]) / 255
+  # metric = hsv[:,:,1]
   metric = metric.astype(np.uint8)
+
   # Otsu thresholding to split the white part of cards from non-cards
   _, mask = cv2.threshold(metric, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-  _, contours, _ = cv2.findContours(mask.copy(), cv2.RETR_LIST,
+  # Adaptive thresholding works when Otsu doesn't, but produces more false pos.
+  # mask = cv2.adaptiveThreshold(metric, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+  #                              cv2.THRESH_BINARY, 11, 0)
+  _, contours, _ = cv2.findContours(mask, cv2.RETR_LIST,
                                     cv2.CHAIN_APPROX_SIMPLE)
 
   rects = []
@@ -118,7 +125,8 @@ def process_cards(img, side_err_scale=0.02, min_area=1000,
     if not min_aspect_ratio < (float(width) / length) < max_aspect_ratio:
       continue
     # check for a reasonable size
-    if width * length < min_area:
+    max_area = 0.8*img.shape[0]*img.shape[1]
+    if not (min_area < (width * length) < max_area):
       continue
     # check for convexity
     # TODO: use convexityDefects instead of isContourConvex
@@ -337,13 +345,16 @@ def main(camera=False, files=None, **kwargs):
 
 
 # for debug purposes only
-def hist_lines(im, arr, color=RED):
+def hist_lines(im, arr, color=RED, vline=None):
   h = im.shape[0]
   hist_item = cv2.calcHist([arr],[0],None,[256],[0,256])
   cv2.normalize(hist_item,hist_item,0,h,cv2.NORM_MINMAX)
   hist=np.int32(np.around(hist_item))
   for x,y in enumerate(hist):
     cv2.line(im,(x,h),(x,h-y), color)
+  if vline is not None:
+    vline = int(vline)
+    cv2.line(im, (vline, 0), (vline, h), BLACK)
 
 
 if __name__ == '__main__':
