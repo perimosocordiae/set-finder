@@ -108,8 +108,7 @@ def process_cards(img, side_err_scale=0.02, min_area=1000,
   # Adaptive thresholding works when Otsu doesn't, but produces more false pos.
   # mask = cv2.adaptiveThreshold(metric, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
   #                              cv2.THRESH_BINARY, 11, 0)
-  _, contours, _ = cv2.findContours(mask, cv2.RETR_LIST,
-                                    cv2.CHAIN_APPROX_SIMPLE)
+  contours, _ = find_contours(mask)
 
   rects = []
   attrs = []
@@ -165,7 +164,7 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
   if shape_close > 0:
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (shape_close,shape_close))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
-  contours = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[1]
+  contours, _ = find_contours(mask)
 
   if not contours:
     return
@@ -188,8 +187,7 @@ def process_attributes(card, min_shape_area=0.05, max_shape_area=0.9,
   color = card_color(card, hsv, mask)
 
   # XXX: re-finding the contours here
-  _, contours, hier = cv2.findContours(mask, cv2.RETR_TREE,
-                                       cv2.CHAIN_APPROX_SIMPLE)
+  contours, hier = find_contours(mask, cv2.RETR_TREE)
   outer_mask = hier[0,:,-1] < 0
   filling = card_filling(outer_mask)
   outer_contours = [c for i,c in enumerate(contours) if outer_mask[i]]
@@ -342,6 +340,12 @@ def main(camera=False, files=None, **kwargs):
   else:
     for f in files:
       _main_static(f, **kwargs)
+
+
+def find_contours(img, ret_type=cv2.RETR_LIST,
+                  meth_type=cv2.CHAIN_APPROX_SIMPLE):
+  res = cv2.findContours(img, ret_type, meth_type)
+  return res[-2:]  # smooths over opencv 2.x vs 3.0 API differences
 
 
 # for debug purposes only
